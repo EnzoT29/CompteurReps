@@ -94,17 +94,16 @@ function exportCSV() {
   let csv = 'temps_s,accel_x,accel_y,accel_z\n';
   csv += data.map(d => `${d.t},${d.x},${d.y},${d.z}`).join('\n');
 
-  // Création d'un fichier virtuel en mémoire, puis déclenchement du téléchargement
-  const blob = new Blob([csv], { type: 'text/csv' });
+  // Sur iOS/WebKit, le téléchargement automatique via a.download est peu fiable.
+  // On ouvre plutôt le contenu dans un nouvel onglet : l'utilisateur peut ensuite
+  // utiliser le bouton de partage natif (icône carrée avec flèche) pour l'enregistrer.
+  const blob = new Blob([csv], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
 
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'mpu6050_data.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const opened = window.open(url, '_blank');
+  if (!opened) {
+    addLog('Le navigateur a bloqué l\'ouverture du nouvel onglet. Vérifie les popups.');
+  }
 }
 
 connectBtn.addEventListener('click', connect);
