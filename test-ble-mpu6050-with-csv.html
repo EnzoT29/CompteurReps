@@ -13,10 +13,11 @@
 <body>
 
 <button id="connectBtn">Se connecter</button>
-<button id="exportBtn" disabled>Télécharger CSV</button>
+<button id="exportBtn" disabled>Afficher le CSV</button>
 
 <div id="output">En attente de connexion...</div>
 <div id="count">Échantillons enregistrés : 0</div>
+<textarea id="csvOutput" style="display:none; width:100%; height:200px; margin-top:10px; font-family:monospace; font-size:12px;" readonly></textarea>
 <div id="log"></div>
 
 <script>
@@ -43,8 +44,7 @@ async function connect() {
   try {
     addLog('Recherche de l\'appareil...');
     const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [SERVICE_UUID]
+      filters: [{ services: [SERVICE_UUID] }]
     });
     addLog('Appareil sélectionné : ' + device.name);
 
@@ -87,6 +87,8 @@ async function connect() {
   }
 }
 
+const csvOutput = document.getElementById('csvOutput');
+
 function exportCSV() {
   if (data.length === 0) return;
 
@@ -94,16 +96,13 @@ function exportCSV() {
   let csv = 'temps_s,accel_x,accel_y,accel_z\n';
   csv += data.map(d => `${d.t},${d.x},${d.y},${d.z}`).join('\n');
 
-  // Sur iOS/WebKit, le téléchargement automatique via a.download est peu fiable.
-  // On ouvre plutôt le contenu dans un nouvel onglet : l'utilisateur peut ensuite
-  // utiliser le bouton de partage natif (icône carrée avec flèche) pour l'enregistrer.
-  const blob = new Blob([csv], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-
-  const opened = window.open(url, '_blank');
-  if (!opened) {
-    addLog('Le navigateur a bloqué l\'ouverture du nouvel onglet. Vérifie les popups.');
-  }
+  // Affichage direct dans la page : fonctionne partout, sans dépendre
+  // des mécanismes de téléchargement du navigateur.
+  csvOutput.style.display = 'block';
+  csvOutput.value = csv;
+  csvOutput.focus();
+  csvOutput.select(); // sélectionne tout le texte automatiquement pour faciliter le copier-coller
+  addLog('CSV affiché ci-dessus, sélectionné. Copie-le (appui long > Copier).');
 }
 
 connectBtn.addEventListener('click', connect);
