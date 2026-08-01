@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Test BLE - MPU6050</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #111; color: #eee; }
+  button { font-size: 16px; padding: 10px 20px; margin-bottom: 20px; }
+  #output { font-size: 20px; white-space: pre-line; }
+  #log { font-size: 12px; color: #888; margin-top: 20px; white-space: pre-line; }
+</style>
+</head>
+<body>
+
+<button id="connectBtn">Se connecter</button>
+<button id="exportBtn" disabled>Télécharger CSV</button>
+
+<div id="output">En attente de connexion...</div>
+<div id="count">Échantillons enregistrés : 0</div>
+<div id="log"></div>
+
+<script>
+// UUID identiques à ceux définis côté ESP32
+const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+const connectBtn = document.getElementById('connectBtn');
+const exportBtn = document.getElementById('exportBtn');
+const output = document.getElementById('output');
+const countEl = document.getElementById('count');
+const log = document.getElementById('log');
+
+// Tableau qui va accumuler toutes les mesures reçues
+let data = [];
+let startTime = null;
+
+function addLog(msg) {
+  log.textContent += msg + '\n';
+  console.log(msg);
+}
+
+async function connect() {
+  try {
+    addLog('Recherche de l\'appareil...');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
+    });
+    addLog('Appareil sélectionné : ' + device.name);
+
+    const server = await device.gatt.connect();
+    addLog('Connecté au serveur GATT');
+
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    addLog('Service trouvé');
+
+    const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+    addLog('Caractéristique trouvée');
+
+    await characteristic.startNotifications();
+    addLog('Notifications activées, en attente de données...');
+    startTime = performance.now();
+
+    characteristic.addEventListener('characteristicvaluechanged', (event) => {
+      const value = event.target.value; // DataView
+      const text = new TextDecoder().decode(value);
+
+      const parts = text.split(',');
+      if (parts.length === 3) {
+        const x = parseFloat(parts[0]);
+        const y = parseFloat(parts[1]);
+        const z = parseFloat(parts[2]);
+        output.textContent = `X: ${x}\nY: ${y}\nZ: ${z}`;
+
+        // Temps écoulé depuis le début de la connexion, en secondes
+        const t = ((performance.now() - startTime) / 1000).toFixed(3);
+        data.push({ t, x, y, z });
+        countEl.textContent = 'Échantillons enregistrés : ' + data.length;
+        exportBtn.disabled = false;
+      } else {
+        output.textContent = 'Texte reçu (format inattendu) : ' + text;
+      }
+    });
+
+  } catch (error) {
+    addLog('Erreur : ' + error.message);
+  }
+}
+
+function exportCSV() {
+  if (data.length === 0) return;
+
+  // Ligne d'en-tête, puis une ligne par mesure
+  let csv = 'temps_s,accel_x,accel_y,accel_z\n';
+  csv += data.map(d => `${d.t},${d.x},${d.y},${d.z}`).join('\n');
+
+  // Création d'un fichier virtuel en mémoire, puis déclenchement du téléchargement
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'mpu6050_data.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+connectBtn.addEventListener('click', connect);
+exportBtn.addEventListener('click', exportCSV);
+</script>
+
+</body>
+</html>
