@@ -13,6 +13,8 @@
 <body>
 
 <button id="connectBtn">Se connecter</button>
+<button id="recordBtn" disabled>Arrêter l'enregistrement</button>
+<button id="resetBtn" disabled>Réinitialiser</button>
 <button id="exportBtn" disabled>Afficher le CSV</button>
 
 <div id="output">En attente de connexion...</div>
@@ -26,6 +28,8 @@ const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
 const connectBtn = document.getElementById('connectBtn');
+const recordBtn = document.getElementById('recordBtn');
+const resetBtn = document.getElementById('resetBtn');
 const exportBtn = document.getElementById('exportBtn');
 const output = document.getElementById('output');
 const countEl = document.getElementById('count');
@@ -34,6 +38,7 @@ const log = document.getElementById('log');
 // Tableau qui va accumuler toutes les mesures reçues
 let data = [];
 let startTime = null;
+let recording = true; // true = les données reçues sont stockées dans le buffer
 
 function addLog(msg) {
   log.textContent += msg + '\n';
@@ -44,8 +49,7 @@ async function connect() {
   try {
     addLog('Recherche de l\'appareil...');
     const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [SERVICE_UUID]
+      filters: [{ services: [SERVICE_UUID] }]
     });
     addLog('Appareil sélectionné : ' + device.name);
 
@@ -61,6 +65,8 @@ async function connect() {
     await characteristic.startNotifications();
     addLog('Notifications activées, en attente de données...');
     startTime = performance.now();
+    recordBtn.disabled = false;
+    resetBtn.disabled = false;
 
     characteristic.addEventListener('characteristicvaluechanged', (event) => {
       const value = event.target.value; // DataView
@@ -73,11 +79,15 @@ async function connect() {
         const z = parseFloat(parts[2]);
         output.textContent = `X: ${x}\nY: ${y}\nZ: ${z}`;
 
-        // Temps écoulé depuis le début de la connexion, en secondes
-        const t = ((performance.now() - startTime) / 1000).toFixed(3);
-        data.push({ t, x, y, z });
-        countEl.textContent = 'Échantillons enregistrés : ' + data.length;
-        exportBtn.disabled = false;
+        // On ne stocke que si l'enregistrement est actif.
+        // Les notifications continuent d'arriver même en pause,
+        // on les ignore simplement ici plutôt que de les stocker.
+        if (recording) {
+          const t = ((performance.now() - startTime) / 1000).toFixed(3);
+          data.push({ t, x, y, z });
+          countEl.textContent = 'Échantillons enregistrés : ' + data.length;
+          exportBtn.disabled = false;
+        }
       } else {
         output.textContent = 'Texte reçu (format inattendu) : ' + text;
       }
@@ -106,8 +116,26 @@ function exportCSV() {
   addLog('CSV affiché ci-dessus, sélectionné. Copie-le (appui long > Copier).');
 }
 
+function toggleRecording() {
+  recording = !recording;
+  recordBtn.textContent = recording ? "Arrêter l'enregistrement" : "Reprendre l'enregistrement";
+  addLog(recording ? 'Enregistrement repris.' : 'Enregistrement en pause (les notifications continuent d\'arriver mais ne sont plus stockées).');
+}
+
+function resetBuffer() {
+  data = [];
+  startTime = performance.now(); // les temps repartent à 0 pour le prochain enregistrement
+  countEl.textContent = 'Échantillons enregistrés : 0';
+  exportBtn.disabled = true;
+  csvOutput.style.display = 'none';
+  csvOutput.value = '';
+  addLog('Buffer réinitialisé.');
+}
+
 connectBtn.addEventListener('click', connect);
 exportBtn.addEventListener('click', exportCSV);
+recordBtn.addEventListener('click', toggleRecording);
+resetBtn.addEventListener('click', resetBuffer);
 </script>
 
 </body>
